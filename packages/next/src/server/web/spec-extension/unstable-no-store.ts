@@ -34,6 +34,8 @@ export function unstable_noStore() {
       switch (workUnitStore.type) {
         case 'prerender':
         case 'prerender-client':
+        case 'validation-client':
+        case 'prerender-runtime':
           // unstable_noStore() is a noop in Dynamic I/O.
           return
         case 'prerender-ppr':
@@ -42,6 +44,7 @@ export function unstable_noStore() {
         case 'cache':
         case 'private-cache':
         case 'unstable-cache':
+        case 'generate-static-params':
           break
         default:
           workUnitStore satisfies never

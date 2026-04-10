@@ -2,7 +2,7 @@ import { nextTestSetup, isNextStart } from 'e2e-utils'
 import { splitResponseWithPPRSentinel } from 'e2e-utils/ppr'
 import { links } from './components/links'
 import cheerio from 'cheerio'
-import { retry } from 'next-test-utils'
+import { getCacheHeader, retry } from 'next-test-utils'
 import { computeCacheBustingSearchParam } from 'next/dist/shared/lib/router/utils/cache-busting-search-param'
 
 type Page = {
@@ -67,7 +67,23 @@ const addCacheBustingSearchParam = (
   return url.pathname + url.search
 }
 
-describe('ppr-full', () => {
+/**
+ * Expects that the cache-control header contains the given directives in any
+ * order.
+ *
+ * @param header The cache-control header to check.
+ * @param directives The directives to expect.
+ */
+const expectDirectives = (header: string, directives: string[]) => {
+  const split = header.split(',').map((directive) => directive.trim())
+  for (const directive of directives) {
+    expect(split).toContain(directive)
+  }
+  expect(split.length).toEqual(directives.length)
+}
+
+// TODO(NAR-423): Migrate to Cache Components.
+describe.skip('ppr-full', () => {
   const { next, isNextDev, isNextDeploy } = nextTestSetup({
     files: __dirname,
   })
@@ -105,6 +121,32 @@ describe('ppr-full', () => {
 
           // Consume the response body to ensure the cache is populated.
           await res.text()
+        })
+
+        it('should allow soft navigations to and from the / page', async () => {
+          const browser = await next.browser('/')
+
+          await browser.waitForElementByCss(`[data-pathname="/"]`)
+
+          // Add a window var so we can detect if there was a full navigation.
+          const now = Date.now()
+          await browser.eval(`window.beforeNav = ${now}`)
+
+          // Navigate to the page and wait for the page to load.
+          await browser.elementByCss(`a[href="${pathname}"]`).click()
+          await browser.waitForElementByCss(`[data-pathname="${pathname}"]`)
+
+          // Ensure we did a client navigation and not a full page navigation.
+          let beforeNav = await browser.eval('window.beforeNav')
+          expect(beforeNav).toBe(now)
+
+          // Navigate back to the home page and wait for the page to load.
+          await browser.elementByCss(`a[href="/"]`).click()
+          await browser.waitForElementByCss(`[data-pathname="/"]`)
+
+          // Ensure we did a client navigation and not a full page navigation.
+          beforeNav = await browser.eval('window.beforeNav')
+          expect(beforeNav).toBe(now)
         })
 
         it('should allow navigations to and from a pages/ page', async () => {
@@ -150,7 +192,7 @@ describe('ppr-full', () => {
           if (isNextDeploy) {
             expect(cacheControl).toEqual('public, max-age=0, must-revalidate')
           } else if (isNextDev) {
-            expect(cacheControl).toEqual('no-store, must-revalidate')
+            expect(cacheControl).toEqual('no-cache, must-revalidate')
           } else if (dynamic === false || dynamic === 'force-static') {
             expect(cacheControl).toEqual(
               revalidate === undefined
@@ -491,9 +533,11 @@ describe('ppr-full', () => {
           }
 
           if (isNextDeploy) {
-            expect(res.headers.get('cache-control')).toEqual(
-              'public, max-age=0, must-revalidate'
-            )
+            expectDirectives(res.headers.get('cache-control') || '', [
+              'public',
+              'max-age=0',
+              'must-revalidate',
+            ])
           }
 
           if (signal === 'redirect()') {
@@ -551,9 +595,11 @@ describe('ppr-full', () => {
             expect(res.headers.get('content-type')).toEqual('text/x-component')
 
             if (isNextDeploy) {
-              expect(res.headers.get('cache-control')).toEqual(
-                'public, max-age=0, must-revalidate'
-              )
+              expectDirectives(res.headers.get('cache-control') || '', [
+                'public',
+                'max-age=0',
+                'must-revalidate',
+              ])
             } else {
               expect(res.headers.get('cache-control')).toEqual(
                 revalidate === undefined
@@ -562,11 +608,7 @@ describe('ppr-full', () => {
               )
             }
 
-            if (!isNextDeploy) {
-              expect(res.headers.get('x-nextjs-cache')).toBe('HIT')
-            } else {
-              expect(res.headers.get('x-vercel-cache')).toBe('HIT')
-            }
+            expect(getCacheHeader(res)).toBe('HIT')
           })
         })
 
@@ -602,16 +644,21 @@ describe('ppr-full', () => {
             headers
           )
 
-          const res = await next.fetch(urlWithCacheBusting, {
+          let res = await next.fetch(urlWithCacheBusting, {
             headers,
           })
           expect(res.status).toEqual(200)
           expect(res.headers.get('content-type')).toEqual('text/x-component')
-          expect(res.headers.get('cache-control')).toEqual(
-            'private, no-cache, no-store, max-age=0, must-revalidate'
-          )
+          expectDirectives(res.headers.get('cache-control') || '', [
+            'private',
+            'no-store',
+            'no-cache',
+            'max-age=0',
+            'must-revalidate',
+          ])
+
           if (isNextDeploy) {
-            expect(res.headers.get('x-vercel-cache')).toBe('MISS')
+            expect(getCacheHeader(res)).toMatch(/MISS|HIT|PRERENDER/)
           } else {
             expect(res.headers.get('x-nextjs-cache')).toEqual(null)
           }

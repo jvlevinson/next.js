@@ -172,7 +172,12 @@ module.exports = ({ dev, turbo, bundleType, experimental, ...rest }) => {
   return {
     entry: bundleTypes[bundleType],
     target: 'node',
-    mode: dev ? 'development' : 'production',
+    mode:
+      process.env.NEXT_DEBUG_INTERNALS === 'true'
+        ? 'development'
+        : dev
+          ? 'development'
+          : 'production',
     output: {
       path: path.join(__dirname, 'dist/compiled/next-server'),
       filename: `[name]${turbo ? '-turbo' : ''}${
@@ -181,18 +186,22 @@ module.exports = ({ dev, turbo, bundleType, experimental, ...rest }) => {
       libraryTarget: 'commonjs2',
     },
     devtool: 'source-map',
-    optimization: {
-      moduleIds: 'named',
-      minimize: true,
-      concatenateModules: true,
-      minimizer: [
-        new webpack.SwcJsMinimizerRspackPlugin({
-          minimizerOptions: {
-            mangle: dev || process.env.NEXT_SERVER_NO_MANGLE ? false : true,
+    optimization:
+      process.env.NEXT_DEBUG_INTERNALS === 'true'
+        ? undefined
+        : {
+            moduleIds: 'named',
+            minimize: true,
+            concatenateModules: true,
+            minimizer: [
+              new webpack.SwcJsMinimizerRspackPlugin({
+                minimizerOptions: {
+                  mangle:
+                    dev || process.env.NEXT_SERVER_NO_MANGLE ? false : true,
+                },
+              }),
+            ],
           },
-        }),
-      ],
-    },
     plugins: [
       new DevToolsIgnoreListPlugin({ shouldIgnorePath }),
       new webpack.DefinePlugin({
@@ -200,8 +209,11 @@ module.exports = ({ dev, turbo, bundleType, experimental, ...rest }) => {
         'process.env.NEXT_MINIMAL': JSON.stringify('true'),
         'this.serverOptions.experimentalTestProxy': JSON.stringify(false),
         'this.minimalMode': JSON.stringify(true),
-        'this.renderOpts.dev': JSON.stringify(dev),
-        'renderOpts.dev': JSON.stringify(dev),
+        // Only inline __NEXT_DEV_SERVER in prod bundles (for dead-code
+        // elimination). Dev bundles must keep it as a runtime check because
+        // they're shared between `next dev` (where it's set) and `next build
+        // --debug-prerender` (where it's not).
+        ...(dev ? {} : { 'process.env.__NEXT_DEV_SERVER': JSON.stringify('') }),
         'process.env.NODE_ENV': JSON.stringify(
           dev ? 'development' : 'production'
         ),
@@ -288,9 +300,6 @@ module.exports = ({ dev, turbo, bundleType, experimental, ...rest }) => {
       externalsMap,
       externalHandler,
     ],
-    experiments: {
-      layers: true,
-    },
     ...rest,
   }
 }

@@ -3,11 +3,11 @@ import * as React from 'react'
 import { HotlinkedText } from '../hot-linked-text'
 import { EditorLink } from './editor-link'
 import { ExternalIcon } from '../../icons/external'
-import { getFrameSource, type StackFrame } from '../../../shared/stack-frame'
+import { getStackFrameFile, type StackFrame } from '../../../shared/stack-frame'
 import { useOpenInEditor } from '../../utils/use-open-in-editor'
 import { FileIcon } from '../../icons/file'
 
-export type TerminalProps = { content: string }
+type TerminalProps = { content: string }
 
 function getFile(lines: string[]) {
   const contentFileName = lines.shift()
@@ -74,7 +74,6 @@ export const Terminal: React.FC<TerminalProps> = function Terminal({
     })
   }, [source])
 
-  console.log({ file })
   const open = useOpenInEditor({
     file: file?.fileName,
     line1: file?.location?.line1 ?? 1,
@@ -100,7 +99,7 @@ export const Terminal: React.FC<TerminalProps> = function Terminal({
           </span>
           <span data-text>
             {/* TODO: Unlike the CodeFrame component, the `methodName` is unavailable. */}
-            {getFrameSource(stackFrame)}
+            {getStackFrameFile(stackFrame)}
           </span>
           <button
             aria-label="Open in editor"

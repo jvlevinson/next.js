@@ -143,17 +143,7 @@ export function Draggable({
   }
 
   return (
-    <div
-      {...props}
-      ref={ref}
-      {...drag}
-      style={{
-        touchAction: 'none',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        ...props.style,
-      }}
-    >
+    <div {...props} {...drag} ref={ref}>
       {children}
     </div>
   )
@@ -175,7 +165,7 @@ interface Velocity {
   timestamp: number
 }
 
-export function useDrag(options: UseDragOptions) {
+function useDrag(options: UseDragOptions) {
   const ref = useRef<HTMLDivElement>(null)
   const machine = useRef<
     | { state: 'idle' | 'press' | 'drag-end' }
@@ -208,6 +198,7 @@ export function useDrag(options: UseDragOptions) {
     velocities.current = []
 
     ref.current?.classList.remove('dev-tools-grabbing')
+    ref.current?.style.removeProperty('-webkit-user-select')
     document.body.style.removeProperty('user-select')
     document.body.style.removeProperty('-webkit-user-select')
   }, [])
@@ -310,7 +301,7 @@ export function useDrag(options: UseDragOptions) {
         machine.current = { state: 'drag', pointerId: e.pointerId }
         ref.current?.setPointerCapture(e.pointerId)
         ref.current?.classList.add('dev-tools-grabbing')
-        // eslint-disable-next-line react-hooks/react-compiler -- Bug in react-hooks/react-compiler
+        ref.current?.style.setProperty('-webkit-user-select', 'none')
         document.body.style.userSelect = 'none'
         document.body.style.webkitUserSelect = 'none'
         options.onDragStart?.()

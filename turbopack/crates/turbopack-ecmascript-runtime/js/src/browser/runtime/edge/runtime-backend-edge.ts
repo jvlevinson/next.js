@@ -24,7 +24,9 @@ let BACKEND: RuntimeBackend
     // registered before any of them are instantiated.
     // Furthermore, modules must be instantiated synchronously, hence we don't
     // use promises here.
-    registerChunk(chunkPath, params) {
+    registerChunk(chunk, params) {
+      let chunkPath = getPathFromScript(chunk)
+
       registeredChunks.add(chunkPath)
       instantiateDependentChunks(chunkPath)
 
@@ -51,11 +53,7 @@ let BACKEND: RuntimeBackend
       }
     },
 
-    loadChunkCached(
-      _sourceType: SourceType,
-      _sourceData: SourceData,
-      _chunkUrl: ChunkUrl
-    ) {
+    loadChunkCached(_sourceType: SourceType, _chunkUrl: ChunkUrl) {
       throw new Error('chunk loading is not supported')
     },
 

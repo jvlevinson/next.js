@@ -1,5 +1,5 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use bincode::{Decode, Encode};
 use swc_core::ecma::{
     ast::{Expr, KeyValueProp, Prop, PropName, SimpleAssignTarget},
     visit::fields::{CalleeField, PropField},
@@ -8,18 +8,20 @@ use turbo_rcstr::RcStr;
 use turbo_tasks::{NonLocalValue, ResolvedVc, Vc, trace::TraceRawVcs};
 use turbopack_core::chunk::ChunkingContext;
 
-use super::EsmAssetReference;
 use crate::{
     ScopeHoistingContext,
     code_gen::{CodeGen, CodeGeneration},
     create_visitor,
     references::{
         AstPath,
-        esm::base::{ReferencedAsset, ReferencedAssetIdent},
+        esm::{
+            EsmAssetReference,
+            base::{ReferencedAsset, ReferencedAssetIdent},
+        },
     },
 };
 
-#[derive(Hash, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, TraceRawVcs, NonLocalValue)]
+#[derive(Hash, Clone, Debug, PartialEq, Eq, TraceRawVcs, NonLocalValue, Encode, Decode)]
 pub struct EsmBinding {
     reference: ResolvedVc<EsmAssetReference>,
     export: Option<RcStr>,
@@ -92,7 +94,6 @@ impl EsmBinding {
                         visit_mut_prop,
                         |prop: &mut Prop| {
                             if let Prop::Shorthand(ident) = prop {
-                                // TODO: Merge with the above condition when https://rust-lang.github.io/rfcs/2497-if-let-chains.html lands.
                                 match &imported_ident {
                                     ImportedIdent::Module(imported_ident) => {
                                         *prop = Prop::KeyValue(KeyValueProp {

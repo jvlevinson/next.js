@@ -1,6 +1,110 @@
 import type { DynamicParam } from '../../../../server/app-render/app-render'
-import type { DynamicParamTypesShort } from '../../../../server/app-render/types'
-import type { FallbackRouteParams } from '../../../../server/request/fallback-params'
+import type { LoaderTree } from '../../../../server/lib/app-dir-module'
+import type { OpaqueFallbackRouteParams } from '../../../../server/request/fallback-params'
+import type { Params } from '../../../../server/request/params'
+import type { DynamicParamTypesShort } from '../../app-router-types'
+import { InvariantError } from '../../invariant-error'
+import { parseLoaderTree } from './parse-loader-tree'
+import { parseNormalizedAppRoute, parseAppRouteSegment } from '../routes/app'
+import { resolveParamValue } from './resolve-param-value'
+
+/**
+ * Gets the value of a param from the params object. This correctly handles the
+ * case where the param is a fallback route param and encodes the resulting
+ * value.
+ *
+ * @param interpolatedParams - The params object.
+ * @param segmentKey - The key of the segment.
+ * @param fallbackRouteParams - The fallback route params.
+ * @returns The value of the param.
+ */
+function getParamValue(
+  interpolatedParams: Params,
+  segmentKey: string,
+  fallbackRouteParams: OpaqueFallbackRouteParams | null
+) {
+  let value = interpolatedParams[segmentKey]
+
+  if (fallbackRouteParams?.has(segmentKey)) {
+    // We know that the fallback route params has the segment key because we
+    // checked that above.
+    const [searchValue] = fallbackRouteParams.get(segmentKey)!
+    value = searchValue
+  } else if (Array.isArray(value)) {
+    value = value.map((i) => encodeURIComponent(i))
+  } else if (typeof value === 'string') {
+    value = encodeURIComponent(value)
+  }
+
+  return value
+}
+
+export function interpolateParallelRouteParams(
+  loaderTree: LoaderTree,
+  params: Params,
+  pagePath: string,
+  fallbackRouteParams: OpaqueFallbackRouteParams | null
+): Params {
+  const interpolated = structuredClone(params)
+
+  // Stack-based traversal with depth tracking
+  const stack: Array<{ tree: LoaderTree; depth: number }> = [
+    { tree: loaderTree, depth: 0 },
+  ]
+
+  // Parse the route from the provided page path.
+  const route = parseNormalizedAppRoute(pagePath)
+
+  while (stack.length > 0) {
+    const { tree, depth } = stack.pop()!
+    const { segment, parallelRoutes } = parseLoaderTree(tree)
+
+    const appSegment = parseAppRouteSegment(segment)
+
+    if (
+      appSegment?.type === 'dynamic' &&
+      !interpolated.hasOwnProperty(appSegment.param.paramName) &&
+      // If the param is in the fallback route params, we don't need to
+      // interpolate it because it's already marked as being unknown.
+      !fallbackRouteParams?.has(appSegment.param.paramName)
+    ) {
+      const { paramName, paramType } = appSegment.param
+
+      const paramValue = resolveParamValue(
+        paramName,
+        paramType,
+        depth,
+        route,
+        interpolated
+      )
+
+      if (paramValue !== undefined) {
+        interpolated[paramName] = paramValue
+      } else if (paramType !== 'optional-catchall') {
+        throw new InvariantError(
+          `Could not resolve param value for segment: ${paramName}`
+        )
+      }
+    }
+
+    // Calculate next depth - increment if this is not a route group and not empty
+    let nextDepth = depth
+    if (
+      appSegment &&
+      appSegment.type !== 'route-group' &&
+      appSegment.type !== 'parallel-route'
+    ) {
+      nextDepth++
+    }
+
+    // Add all parallel routes to the stack for processing
+    for (const parallelRoute of Object.values(parallelRoutes)) {
+      stack.push({ tree: parallelRoute, depth: nextDepth })
+    }
+  }
+
+  return interpolated
+}
 
 /**
  *
@@ -14,72 +118,47 @@ import type { FallbackRouteParams } from '../../../../server/request/fallback-pa
  * and optional is, alas, unfortunate.
  */
 export function getDynamicParam(
-  params: { [key: string]: any },
+  interpolatedParams: Params,
   segmentKey: string,
   dynamicParamType: DynamicParamTypesShort,
-  pagePath: string,
-  fallbackRouteParams: FallbackRouteParams | null
+  fallbackRouteParams: OpaqueFallbackRouteParams | null,
+  staticSiblings: readonly string[] | null
 ): DynamicParam {
-  let value = params[segmentKey]
+  let value: string | string[] | undefined = getParamValue(
+    interpolatedParams,
+    segmentKey,
+    fallbackRouteParams
+  )
 
-  if (fallbackRouteParams && fallbackRouteParams.has(segmentKey)) {
-    value = fallbackRouteParams.get(segmentKey)
-  } else if (Array.isArray(value)) {
-    value = value.map((i) => encodeURIComponent(i))
-  } else if (typeof value === 'string') {
-    value = encodeURIComponent(value)
-  }
-
-  if (!value) {
-    const isCatchall = dynamicParamType === 'c'
-    const isOptionalCatchall = dynamicParamType === 'oc'
-
-    if (isCatchall || isOptionalCatchall) {
-      // handle the case where an optional catchall does not have a value,
-      // e.g. `/dashboard/[[...slug]]` when requesting `/dashboard`
-      if (isOptionalCatchall) {
-        return {
-          param: segmentKey,
-          value: null,
-          type: dynamicParamType,
-          treeSegment: [segmentKey, '', dynamicParamType],
-        }
-      }
-
-      // handle the case where a catchall or optional catchall does not have a value,
-      // e.g. `/foo/bar/hello` and `@slot/[...catchall]` or `@slot/[[...catchall]]` is matched
-      value = pagePath
-        .split('/')
-        // remove the first empty string
-        .slice(1)
-        // replace any dynamic params with the actual values
-        .flatMap((pathSegment) => {
-          const param = parseParameter(pathSegment)
-          // if the segment matches a param, return the param value
-          // otherwise, it's a static segment, so just return that
-          return params[param.key] ?? param.key
-        })
-
+  // handle the case where an optional catchall does not have a value,
+  // e.g. `/dashboard/[[...slug]]` when requesting `/dashboard`
+  if (!value || value.length === 0) {
+    if (dynamicParamType === 'oc') {
       return {
         param: segmentKey,
-        value,
+        value: null,
         type: dynamicParamType,
-        // This value always has to be a string.
-        treeSegment: [segmentKey, value.join('/'), dynamicParamType],
+        treeSegment: [segmentKey, '', dynamicParamType, staticSiblings],
       }
     }
+
+    throw new InvariantError(
+      `Missing value for segment key: "${segmentKey}" with dynamic param type: ${dynamicParamType}`
+    )
   }
+
+  const paramCacheKey = Array.isArray(value) ? value.join('/') : value
 
   return {
     param: segmentKey,
     // The value that is passed to user code.
-    value: value,
+    value,
     // The value that is rendered in the router tree.
-    treeSegment: [
-      segmentKey,
-      Array.isArray(value) ? value.join('/') : value,
-      dynamicParamType,
-    ],
+    // TODO: If the number of static siblings exceeds some threshold (e.g.,
+    // dozens or hundreds), consider sending a Bloom filter instead of the full
+    // array to reduce payload size. The client would then use the Bloom filter
+    // to check membership with a small false positive rate.
+    treeSegment: [segmentKey, paramCacheKey, dynamicParamType, staticSiblings],
     type: dynamicParamType,
   }
 }

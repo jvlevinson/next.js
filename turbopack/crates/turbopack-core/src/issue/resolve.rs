@@ -1,13 +1,12 @@
 use std::fmt::Write;
 
 use anyhow::Result;
-use turbo_rcstr::RcStr;
-use turbo_tasks::{ReadRef, ResolvedVc, ValueToString, Vc};
+use turbo_rcstr::{RcStr, rcstr};
+use turbo_tasks::{PrettyPrintError, ReadRef, ResolvedVc, ValueToString, ValueToStringRef, Vc};
 use turbo_tasks_fs::FileSystemPath;
 
 use super::{Issue, IssueSource, IssueStage, OptionStyledString, StyledString};
 use crate::{
-    error::PrettyPrintError,
     issue::{IssueSeverity, OptionIssueSource},
     resolve::{
         options::{ImportMap, ImportMapResult, ResolveOptions},
@@ -36,8 +35,8 @@ impl Issue for ResolvingIssue {
     async fn title(&self) -> Result<Vc<StyledString>> {
         let request = self.request.request_pattern().to_string().owned().await?;
         Ok(StyledString::Line(vec![
-            StyledString::Strong("Module not found".into()),
-            StyledString::Text(": Can't resolve ".into()),
+            StyledString::Strong(rcstr!("Module not found")),
+            StyledString::Text(rcstr!(": Can't resolve ")),
             StyledString::Code(request),
         ])
         .cell())
@@ -102,7 +101,7 @@ impl Issue for ResolvingIssue {
         writeln!(
             detail,
             "Path where resolving has started: {context}",
-            context = self.file_path.value_to_string().await?
+            context = self.file_path.to_string_ref().await?
         )?;
         writeln!(
             detail,

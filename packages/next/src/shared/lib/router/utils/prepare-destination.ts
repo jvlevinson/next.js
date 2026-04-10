@@ -5,7 +5,7 @@ import type { RouteHas } from '../../../../lib/load-custom-routes'
 import type { BaseNextRequest } from '../../../../server/base-http'
 
 import { escapeStringRegexp } from '../../escape-regexp'
-import { parseUrl } from './parse-url'
+import { parseUrl, type ParsedUrl } from './parse-url'
 import {
   INTERCEPTION_ROUTE_MARKERS,
   isInterceptionRouteAppPath,
@@ -163,7 +163,7 @@ export function parseDestination(args: {
   destination: string
   params: Readonly<Params>
   query: Readonly<NextParsedUrlQuery>
-}) {
+}): ParsedUrl {
   let escaped = args.destination
   for (const param of Object.keys({ ...args.params, ...args.query })) {
     if (!param) continue
@@ -198,6 +198,11 @@ export function parseDestination(args: {
     search = unescapeSegments(search)
   }
 
+  let origin = parsed.origin
+  if (origin) {
+    origin = unescapeSegments(origin)
+  }
+
   return {
     ...parsed,
     pathname,
@@ -205,6 +210,7 @@ export function parseDestination(args: {
     href,
     hash,
     search,
+    origin,
   }
 }
 

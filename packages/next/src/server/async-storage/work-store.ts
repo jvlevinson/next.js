@@ -19,18 +19,19 @@ export type WorkStoreContext = {
    */
   page: string
 
-  requestEndedState?: { ended?: boolean }
   isPrefetchRequest?: boolean
+  nonce?: string
   renderOpts: {
     cacheLifeProfiles?: { [profile: string]: CacheLife }
     incrementalCache?: IncrementalCache
     isOnDemandRevalidate?: boolean
+    cacheComponents: boolean
     fetchCache?: AppSegmentConfig['fetchCache']
     isPossibleServerAction?: boolean
     pendingWaitUntil?: Promise<any>
     experimental: Pick<
       RenderOpts['experimental'],
-      'isRoutePPREnabled' | 'cacheComponents' | 'authInterrupts'
+      'isRoutePPREnabled' | 'authInterrupts'
     >
 
     /**
@@ -54,12 +55,9 @@ export type WorkStoreContext = {
     | 'assetPrefix'
     | 'supportsDynamicResponse'
     | 'shouldWaitOnAllReady'
-    | 'isRevalidate'
-    | 'nextExport'
+    | 'isBuildTimePrerendering'
     | 'isDraftMode'
     | 'isDebugDynamicAccesses'
-    | 'dev'
-    | 'hasReadableErrorStacks'
   > &
     RequestLifecycleOpts &
     Partial<Pick<RenderOpts, 'reactLoadableManifest'>>
@@ -77,10 +75,10 @@ export type WorkStoreContext = {
 export function createWorkStore({
   page,
   renderOpts,
-  requestEndedState,
   isPrefetchRequest,
   buildId,
   previouslyRevalidatedTags,
+  nonce,
 }: WorkStoreContext): WorkStore {
   /**
    * Rules of Static & Dynamic HTML:
@@ -90,7 +88,7 @@ export function createWorkStore({
    *
    *    2.) If dynamic HTML support is requested, we must honor that request
    *        or throw an error. It is the sole responsibility of the caller to
-   *        ensure they aren't e.g. requesting dynamic HTML for an AMP page.
+   *        ensure they aren't e.g. requesting dynamic HTML for a static page.
    *
    *    3.) If the request is in draft mode, we must generate dynamic HTML.
    *
@@ -105,6 +103,15 @@ export function createWorkStore({
     !renderOpts.isDraftMode &&
     !renderOpts.isPossibleServerAction
 
+  const shouldTrackFetchMetrics =
+    !!process.env.__NEXT_DEV_SERVER ||
+    // The only times we want to track fetch metrics outside of development is
+    // when we are performing a static generation and we either are in debug
+    // mode, or tracking fetch metrics was specifically opted into.
+    (isStaticGeneration &&
+      (!!process.env.NEXT_DEBUG_BUILD ||
+        process.env.NEXT_SSG_FETCH_METRICS === '1'))
+
   const store: WorkStore = {
     isStaticGeneration,
     page,
@@ -114,26 +121,25 @@ export function createWorkStore({
       // so that it can access the fs cache without mocks
       renderOpts.incrementalCache || (globalThis as any).__incrementalCache,
     cacheLifeProfiles: renderOpts.cacheLifeProfiles,
-    isRevalidate: renderOpts.isRevalidate,
-    isBuildTimePrerendering: renderOpts.nextExport,
-    hasReadableErrorStacks: renderOpts.hasReadableErrorStacks,
+    isBuildTimePrerendering: renderOpts.isBuildTimePrerendering,
     fetchCache: renderOpts.fetchCache,
     isOnDemandRevalidate: renderOpts.isOnDemandRevalidate,
 
     isDraftMode: renderOpts.isDraftMode,
 
-    requestEndedState,
     isPrefetchRequest,
     buildId,
     reactLoadableManifest: renderOpts?.reactLoadableManifest || {},
     assetPrefix: renderOpts?.assetPrefix || '',
+    nonce,
 
     afterContext: createAfterContext(renderOpts),
-    cacheComponentsEnabled: renderOpts.experimental.cacheComponents,
-    dev: renderOpts.dev ?? false,
+    cacheComponentsEnabled: renderOpts.cacheComponents,
     previouslyRevalidatedTags,
     refreshTagsByCacheKind: createRefreshTagsByCacheKind(),
     runInCleanSnapshot: createSnapshot(),
+    shouldTrackFetchMetrics,
+    reactServerErrorsByDigest: new Map(),
   }
 
   // TODO: remove this when we resolve accessing the store outside the execution context

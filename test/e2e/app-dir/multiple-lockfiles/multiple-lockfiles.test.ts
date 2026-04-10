@@ -1,6 +1,6 @@
 import { join } from 'path'
-import { unlink } from 'fs/promises'
 import { FileRef, nextTestSetup } from 'e2e-utils'
+import { retry } from 'next-test-utils'
 
 describe('multiple-lockfiles', () => {
   const { next, skipped, isTurbopack } = nextTestSetup({
@@ -14,6 +14,8 @@ describe('multiple-lockfiles', () => {
         lockfileVersion: 3,
       }),
     },
+    // So that ../package-lock.json doesn't leave the isolated testDir
+    subDir: 'test',
     skipDeployment: true,
   })
 
@@ -21,24 +23,21 @@ describe('multiple-lockfiles', () => {
     return
   }
 
-  afterAll(async () => {
-    // Cleanup to ensure it doesn't affect other tests.
-    await unlink(join(next.testDir, '../package-lock.json'))
-  })
-
   it('should have multiple lockfiles warnings', async () => {
-    expect(next.cliOutput).toMatch(
-      /We detected multiple lockfiles and selected the directory of .+ as the root directory\./
-    )
+    await retry(async () => {
+      expect(next.cliOutput).toMatch(
+        /We detected multiple lockfiles and selected the directory of .+ as the root directory\./
+      )
 
-    if (isTurbopack) {
-      expect(next.cliOutput).toMatch(
-        /To silence this warning, set `turbopack\.root` in your Next\.js config, or consider removing one of the lockfiles if it's not needed\./
-      )
-    } else {
-      expect(next.cliOutput).toMatch(
-        /To silence this warning, set `outputFileTracingRoot` in your Next\.js config, or consider removing one of the lockfiles if it's not needed\./
-      )
-    }
+      if (isTurbopack) {
+        expect(next.cliOutput).toMatch(
+          /To silence this warning, set `turbopack\.root` in your Next\.js config, or consider removing one of the lockfiles if it's not needed\./
+        )
+      } else {
+        expect(next.cliOutput).toMatch(
+          /To silence this warning, set `outputFileTracingRoot` in your Next\.js config, or consider removing one of the lockfiles if it's not needed\./
+        )
+      }
+    })
   })
 })

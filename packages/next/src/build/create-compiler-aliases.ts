@@ -126,6 +126,10 @@ export function createWebpackAliases({
     'styled-jsx/style$': defaultOverrides['styled-jsx/style'],
     'styled-jsx$': defaultOverrides['styled-jsx'],
 
+    'next/dist/compiled/next-devtools': isClient
+      ? 'next/dist/compiled/next-devtools'
+      : 'next/dist/next-devtools/dev-overlay.shim.js',
+
     ...customAppAliases,
     ...customDocumentAliases,
 
@@ -198,6 +202,7 @@ export function createServerOnlyClientOnlyAliases(
 
 export function createNextApiEsmAliases() {
   const mapping = {
+    error: 'next/dist/api/error',
     head: 'next/dist/api/head',
     image: 'next/dist/api/image',
     constants: 'next/dist/api/constants',
@@ -233,7 +238,9 @@ export function createAppRouterApiAliases(isServerOnlyLayer: boolean) {
   }
 
   if (isServerOnlyLayer) {
+    mapping['error'] = 'next/dist/api/error.react-server'
     mapping['navigation'] = 'next/dist/api/navigation.react-server'
+    mapping['link'] = 'next/dist/client/app-dir/link.react-server'
   }
 
   const aliasMap: Record<string, string> = {}

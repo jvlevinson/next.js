@@ -6,12 +6,12 @@ import type {
 } from '../server/shared'
 import {
   isWebpackInternalResource,
-  formatFrameSourceFile,
+  formatStackFrameFile,
 } from './webpack-module-path'
 
 export type { StackFrame }
 
-export interface ResolvedOriginalStackFrame extends OriginalStackFrameResponse {
+interface ResolvedOriginalStackFrame extends OriginalStackFrameResponse {
   error: false
   reason: null
   external: boolean
@@ -19,7 +19,7 @@ export interface ResolvedOriginalStackFrame extends OriginalStackFrameResponse {
   sourceStackFrame: StackFrame
 }
 
-export interface RejectedOriginalStackFrame extends OriginalStackFrameResponse {
+interface RejectedOriginalStackFrame extends OriginalStackFrameResponse {
   error: true
   reason: string
   external: boolean
@@ -80,10 +80,10 @@ function getOriginalStackFrame(
 }
 
 export async function getOriginalStackFrames(
-  frames: StackFrame[],
+  frames: readonly StackFrame[],
   type: 'server' | 'edge-server' | null,
   isAppDir: boolean
-): Promise<OriginalStackFrame[]> {
+): Promise<readonly OriginalStackFrame[]> {
   const req: OriginalStackFramesRequest = {
     frames,
     isServer: type === 'server',
@@ -125,7 +125,7 @@ export async function getOriginalStackFrames(
   )
 }
 
-export function getFrameSource(frame: StackFrame): string {
+export function getStackFrameFile(frame: StackFrame): string {
   if (!frame.file) return ''
 
   const isWebpackFrame = isWebpackInternalResource(frame.file)
@@ -133,7 +133,7 @@ export function getFrameSource(frame: StackFrame): string {
   let str = ''
   // Skip URL parsing for webpack internal file paths.
   if (isWebpackFrame) {
-    str = formatFrameSourceFile(frame.file)
+    str = formatStackFrameFile(frame.file)
   } else {
     try {
       const u = new URL(frame.file)
@@ -153,9 +153,9 @@ export function getFrameSource(frame: StackFrame): string {
       // Strip query string information as it's typically too verbose to be
       // meaningful.
       parsedPath += u.pathname
-      str = formatFrameSourceFile(parsedPath)
+      str = formatStackFrameFile(parsedPath)
     } catch {
-      str = formatFrameSourceFile(frame.file)
+      str = formatStackFrameFile(frame.file)
     }
   }
 

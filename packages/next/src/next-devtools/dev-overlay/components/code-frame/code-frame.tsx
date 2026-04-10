@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { HotlinkedText } from '../hot-linked-text'
-import { getFrameSource, type StackFrame } from '../../../shared/stack-frame'
+import { getStackFrameFile, type StackFrame } from '../../../shared/stack-frame'
 import { useOpenInEditor } from '../../utils/use-open-in-editor'
 import { ExternalIcon } from '../../icons/external'
 import { FileIcon } from '../../icons/file'
@@ -10,7 +10,7 @@ import {
   parseLineNumberFromCodeFrameLine,
 } from './parse-code-frame'
 
-export type CodeFrameProps = {
+type CodeFrameProps = {
   stackFrame: StackFrame
   codeFrame: string
 }
@@ -49,7 +49,7 @@ export function CodeFrame({ stackFrame, codeFrame }: CodeFrameProps) {
             <FileIcon lang={fileExtension} />
           </span>
           <span data-text>
-            {getFrameSource(stackFrame)} @{' '}
+            {getStackFrameFile(stackFrame)} @{' '}
             <HotlinkedText text={stackFrame.methodName} />
           </span>
           <button
@@ -139,7 +139,6 @@ export const CODE_FRAME_STYLES = `
   }
 
   .code-frame-link [data-text] {
-    display: inline-flex;
     text-align: left;
     margin: auto 6px;
   }
